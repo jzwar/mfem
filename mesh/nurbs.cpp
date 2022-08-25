@@ -25,7 +25,7 @@ namespace mfem
 
 using namespace std;
 
-const int KnotVector::MaxOrder = 10;
+const int KnotVector::MaxOrder = 50;
 
 KnotVector::KnotVector(std::istream &input)
 {
