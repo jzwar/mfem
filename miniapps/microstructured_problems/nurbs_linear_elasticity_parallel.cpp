@@ -130,6 +130,14 @@ int main(int argc, char *argv[]) {
   if (myid == 0) {
     mesh->PrintInfo();
   }
+
+  // Scale load
+  const double surface_area = EvaluateFunctionOnSurface(
+      mesh, boundary_index_neumann, [](const Vector &) { return 1; });
+
+  // Scale Load factor
+  load_factor /= surface_area;
+
   delete mesh;
 
   // Define Finite element space on mesh
@@ -277,4 +285,57 @@ int main(int argc, char *argv[]) {
   // delete pmesh;
 
   return 0;
+}
+
+// Evaluate Objective function
+double EvaluateFunctionOnSurface(
+    const Mesh &serial_mesh, const Array<int> &bdr,
+    std::function<double(const IntegrationPoint &)> &surface_function) {
+  // Init return value
+  double func_value{};
+
+  // Retrieve FE information
+  const FiniteElementSpace *fes = mesh.GetNodes()->FESpace();
+  Array<int> dof_ids;
+
+  // Loop over all available Boundaries
+  for (int i = 0; i < mesh.GetNBE(); i++) {
+    if (bdr[mesh.GetBdrAttribute(i) - 1] == 0) {
+      continue;
+    }
+
+    FaceElementTransformations *FTr = mesh.GetBdrFaceTransformations(i);
+    if (FTr == nullptr) {
+      continue;
+    }
+
+    const int int_order = 2 * fe.GetOrder() + 3;
+    const IntegrationRule &ir = IntRules.Get(FTr->FaceGeom, int_order);
+
+    fes->GetElementDofs(FTr->Elem1No, dof_ids);
+
+    // Loop over Integration points
+    for (int j = 0; j < ir.GetNPoints(); j++) {
+      // Prepare integration values
+      const IntegrationPoint &ip = ir.IntPoint(j);
+      IntegrationPoint eip;
+      FTr->Loc1.Transform(ip, eip);
+      FTr->Face->SetIntPoint(&ip);
+
+      // Calculate Jacobi-determinant
+      double face_weight = FTr->Face->Weight();
+
+      // Evaluate surface function value
+      const double surface_function_at_ip = surface_function(eip);
+
+      // Measure the length of the boundary
+      surface_area += ip.weight * face_weight;
+
+      // Sum up contributions
+      func_value += surface_function_at_ip * ip.weight * face_weight;
+    }
+  }
+
+  // Return the average value of alpha * n.Grad(x) + beta * x
+  return func_value;
 }
